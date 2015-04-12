@@ -2,6 +2,7 @@
 #include "java_reader.h"
 #include "camera.h"
 #include "rectify.h"
+#include "proj_detector.h"
 
 #include <opencv2/opencv.hpp>
 
@@ -29,14 +30,40 @@ const char recv_img[] = "recv.png";
 Camera camera, projector;
 
 void test() {
-	cv::Mat img = cv::imread("test.jpg");
-	cv::Mat m;
+	cv::Mat ih = cv::imread("test_h.jpg"), iv = cv::imread("test_v.jpg");
+	cv::Mat mh, mv;
 	Rectification r(8, 8);
-	if (r.rectify(img, m)) {
-		cv::imwrite("rectified.jpg", m);
+	
+	// Rectify horizontal
+	if (r.rectify(ih, mh)) {
+		cv::imwrite("rectified_h.jpg", mh);
 	} else {
 		printf("Rectification failed\n");
+		return;
 	}
+
+	// Recitfy vertical
+	if (r.rectify(iv, mv)) {
+		cv::imwrite("rectified_v.jpg", mv);
+	} else {
+		printf("Rectification failed\n");
+		return;
+	}
+
+	std::vector<Line> lines_h, lines_v;
+	FindLines(mv, lines_v);
+	FindLines(mh, lines_h);
+
+	std::vector<cv::Point2f> points;
+	FindIntersections(lines_h, lines_v, points);
+
+	cv::Mat m = mv.clone();
+	for (auto it = points.begin(); it != points.end(); ++it) {
+		circle(m, *it, 3, cv::Scalar(255, 255, 255), -1, 8);
+	}
+
+	cv::imwrite("corners.jpg", m);
+
 }
 
 

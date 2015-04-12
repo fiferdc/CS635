@@ -1,65 +1,17 @@
-#include "rectify.h"
+#include "line.h"
 
-Rectification::Rectification(int w, int h)
-{
-	_grid = cv::Size(w, h);
-	_innerGrid = cv::Size(w-2, h-2);
-}
+#include <opencv2/opencv.hpp>
+#include <vector>
 
 bool
-Rectification::rectify(const cv::Mat& input, cv::Mat& out)
+FindLines(const cv::Mat& in, std::vector<Line>& out)
 {
-	std::vector<cv::Point2f> corners;
-	std::vector<cv::Point2f> gridPts;
+	cv::Mat lab;
 
+	cv::Size dsize(700,700);
+	cv::Size _grid(8,8);
 
-	cv::Mat gray, hsv, lab;
-	cv::cvtColor(input, gray, CV_BGR2GRAY);
-	cv::imwrite("gray.jpg", gray);
-		
-	bool found = cv::findChessboardCorners(input, _innerGrid, corners,
-		CV_CALIB_CB_ADAPTIVE_THRESH + CV_CALIB_CB_FILTER_QUADS);
-	
-	if (!found) {
-		return false;
-	}
-	
-
-	cv::cornerSubPix(gray, corners, _innerGrid, cv::Size(-1,-1),
-		cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
-
-	cv::Mat markedImg = input.clone();
-	cv::drawChessboardCorners(markedImg, _innerGrid, cv::Mat(corners), found);
-	cv::imwrite("found.jpg", markedImg);
-
-	cv::Point2f va = corners[1] - corners[0];
-	cv::Point2f vb = corners[_grid.width] - corners[0];
-
-	// Look at sign of z in the cross product for the corner orientation
-	if (va.x*vb.y - va.y*vb.x < 0) {
-		for (int y = 0; y < _innerGrid.height; ++y) {
-			for (int x = 0; x < _innerGrid.width; ++x) {
-				gridPts.push_back(cv::Point2f(100.0*(x+1), 100.0*(y+1)));
-			}
-		}
-	} else {
-		for (int x = 0; x < _innerGrid.width; ++x) {
-			for (int y = 0; y < _innerGrid.height; ++y) {
-				gridPts.push_back(cv::Point2f(100.0*(_innerGrid.width-x), 100.0*(y+1)));
-			}
-		}
-	}
-
-	cv::Mat t = cv::findHomography(corners, gridPts);
-	
-	cv::Size dsize((_grid.width-1)*100, (_grid.height-1)*100);
-	cv::Mat r(dsize, input.type());
-
-	cv::warpPerspective(input, r, t, dsize);
-	out = r;
-	_transformation = t;
-
-	cv::cvtColor(r, lab, CV_BGR2Lab);
+	cv::cvtColor(in, lab, CV_BGR2Lab);
 	cv::imwrite("lab.jpg", lab);
 
 	std::vector<cv::Mat> Lab;
@@ -100,12 +52,6 @@ Rectification::rectify(const cv::Mat& input, cv::Mat& out)
 			cv::TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10000, 0.001),
 			3, cv::KMEANS_PP_CENTERS, centers);
 
-//	std::cout << "CENTERS\n";
-//	std::cout << centers << std::endl;
-
-
-	
-
 	cv::Mat	clusters(dsize, CV_8UC3);
 	for (int x = 0; x < dsize.width; ++x) {
 		for (int y = 0; y < dsize.height; ++y) {
@@ -124,9 +70,10 @@ Rectification::rectify(const cv::Mat& input, cv::Mat& out)
 	cv::Canny(clusters, canny, 50, 200, 3);
 
 	// Remove natural edges
+	int erase = 4;
 	for (int x = 1; x < _grid.width-1; ++x) {
 		for (int y = 0; y < dsize.height; ++y) {
-			for (int z = -3; z <= 3; ++z) {
+			for (int z = -erase; z <= erase; ++z) {
 				canny.at<uchar>(y,x*100+z) = 0;
 			}
 		}
@@ -134,7 +81,7 @@ Rectification::rectify(const cv::Mat& input, cv::Mat& out)
 	
 	for (int x = 0; x < dsize.width; ++x) {
 		for (int y = 1; y < _grid.height-1; ++y) {
-			for (int z = -3; z <= 3; ++z) {
+			for (int z = -erase; z <= erase; ++z) {
 				canny.at<uchar>(y*100+z,x) = 0;
 			}
 		}
@@ -144,12 +91,15 @@ Rectification::rectify(const cv::Mat& input, cv::Mat& out)
 	// Detect lines
 	std::vector<cv::Vec2f> lines;
 	cv::Mat dlines = clusters.clone();
-	cv::HoughLines(canny, lines, 3, CV_PI/180, 150, 0, 0);
+	cv::HoughLines(canny, lines, 3, CV_PI/180, 50, 0, 0);
 
 	// From http://opencvexamples.blogspot.com/2013/10/line-detection-by-hough-line-transform.html
+	out.clear();
+	std::cout << "Lines detected:\n";
 	for( size_t i = 0; i < lines.size(); i++ )
 	{
 		float rho = lines[i][0], theta = lines[i][1];
+		std::cout << "Rho: " << rho << "\tTheta: " << theta << std::endl;
 		cv::Point pt1, pt2;
 		double a = cos(theta), b = sin(theta);
 		double x0 = a*rho, y0 = b*rho;
@@ -157,11 +107,26 @@ Rectification::rectify(const cv::Mat& input, cv::Mat& out)
 		pt1.y = cvRound(y0 + 1000*(a));
 		pt2.x = cvRound(x0 - 1000*(-b));
 		pt2.y = cvRound(y0 - 1000*(a));
+		out.push_back(Line(pt1, pt2));
 		line( dlines, pt1, pt2, cv::Scalar(255,255,255), 1, CV_AA);
 	}
+	std::cout << std::endl;
 
 	cv::imwrite("detected.jpg", dlines);
 
 	return true;
+}
 
+void
+FindIntersections(const std::vector<Line>& h, const std::vector<Line>& v, std::vector<cv::Point2f>& ret)
+{
+	ret.clear();
+	for (std::vector<Line>::const_iterator it = h.cbegin(); it != h.cend(); it++) {
+		for (std::vector<Line>::const_iterator it2 = v.cbegin(); it2 != v.cend(); it2++) {
+			cv::Point2f i;
+			if (it->intersect(*it2, i)) {
+					ret.push_back(i);
+			}
+		}
+	}
 }

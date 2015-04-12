@@ -10,6 +10,7 @@ class Rectification {
  private:
 	cv::Size _grid;
 	cv::Size _innerGrid;
+	cv::Mat _transformation;
 };
 
 #endif  // _RECTIFY_H_
