@@ -1,0 +1,5 @@
+
+This directory contains the voronoi code from netlib with a bug fix.
+
+This directory now contains a slighly revised version of S. Fortune's code and has been converted to support a "library" use option. Compile with -DLIBRARY defined everywhere.
+
