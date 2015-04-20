@@ -7,9 +7,14 @@
 #include <vector>
 
 bool
-FindLines(const cv::Mat& in, std::vector<Line>& out);
+FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out);
 
 void
 FindIntersections(const std::vector<Line>& h, const std::vector<Line>& v, std::vector<cv::Point2f>& ret);
+
+std::vector<cv::Point2f>
+classifyPoints(
+		cv::Mat h, cv::Mat v, std::vector<cv::Point2f> pts,
+		const char * pattern);
 
 #endif  // _PROJ_DETECTOR_H_

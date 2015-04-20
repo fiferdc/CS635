@@ -23,18 +23,24 @@ typedef struct CameraParams {
 
 class Camera {
  public:
-	Camera();
+	Camera(int, int);
 	void setInternals(float f, float dx, float dy);
 	// Calibrate using the provided image
 	bool calibrate(cv::Mat& m);
-	bool cvCalibrate(cv::Mat& m);
+	void cvCalibrate();
+	void reset();
+	void addPoint(cv::Point3f, cv::Point2f);
 		
  private:
+	int _width;
+	int _height;
 	CameraParams _cameraParams;
 	cv::Mat _rMat;
 	cv::Mat _tVec;
 	cv::Mat _camMat;
 	cv::Mat _distCoeffs;
+	std::vector<cv::Point3f> _worldPts;
+	std::vector<cv::Point2f> _imgPts;
 
 };
 

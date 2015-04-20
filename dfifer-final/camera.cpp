@@ -2,8 +2,10 @@
 
 #include <opencv2/opencv.hpp>
 
-Camera::Camera() {
+Camera::Camera(int width, int height) {
   _cameraParams.f = 0.0;
+	_width = width;
+	_height = height;
 }
   
 void
@@ -497,65 +499,19 @@ Camera::calibrate(cv::Mat& input)
   return true;
 }
 
-bool 
-Camera::cvCalibrate(cv::Mat& input)
+void 
+Camera::cvCalibrate()
 {
 	
-	// Find corners
-	cv::Mat m = input;
-	cv::Size patternSize(6, 6);
-	std::vector<cv::Point2f> corners;
-
-	bool found = cv::findChessboardCorners(m, patternSize, corners);
-	
-	if (!found) {
-		printf("ERROR: Find corners failed\n");
-		return false;
-	}
-	
-	cv::Mat gray;
-	cv::cvtColor(m, gray, CV_BGR2GRAY);
-
-	cv::cornerSubPix(gray, corners, cv::Size(6,6), cv::Size(-1,-1),
-		cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
-	
-	cv::drawChessboardCorners(m, patternSize, cv::Mat(corners), found);
-
-	cv::imwrite("found.jpg", m);
-
 	std::vector<std::vector<cv::Point3f> > objectPoints (1);
 	std::vector<std::vector<cv::Point2f> > imagePoints (1);
-	
-	cv::Point2f a = corners[1] - corners[0];
-	cv::Point2f b = corners[6] - corners[0];
-	// Look at sign of z in the cross product for the corner orientation
-	if (a.x*b.y - a.y*b.x < 0) {
-  	for (int i = 0; i < 6; ++i) {
-			for (int j = 0; j < 6; ++j) {
-				cv::Point3f p(25.4*j, -25.4*i, 0.0);
-				std::cout << p;
-				objectPoints[0].push_back(p);
-			}
-		}
-	} else {
-		for (int j = 0; j < 6; ++j) {
-			for (int i = 0; i < 6; ++i) {
-				cv::Point3f p(25.4*(5-j), -25.4*i, 0.0);
-				std::cout << p;
-				objectPoints[0].push_back(p);
-			}
-		}
-	}
-	
-	for (int i = 0; i < 36; ++i) {
-		imagePoints[0].push_back(corners[i]);
-		std::cout << corners[i] << std::endl;
-	}
+	objectPoints[0] = _worldPts;
+	imagePoints[0] = _imgPts;
 	std::vector<cv::Mat> rvecs;
 	std::vector<cv::Mat> tvecs;
 	cv::Mat cameraMatrix;
 	cv::Mat distCoeffs;
-	cv::Size imageSize = m.size();
+	cv::Size imageSize = cv::Size(_width, _height);
 
 	std::cout << cameraMatrix << std::endl;
 
@@ -573,7 +529,20 @@ Camera::cvCalibrate(cv::Mat& input)
 	cv::Rodrigues(rvecs[0], R_);
 	std::cout << R_ << std::endl;
 	std::cout << tvecs[0] << std::endl;
-
-
-	return true;
 }
+
+void
+Camera::reset()
+{
+	_worldPts.clear();
+	_imgPts.clear();
+}
+
+void
+Camera::addPoint(cv::Point3f world, cv::Point2f img)
+{
+	_worldPts.push_back(world);
+	_imgPts.push_back(img);
+}
+
+

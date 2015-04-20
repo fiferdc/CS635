@@ -3,6 +3,8 @@
 #include "camera.h"
 #include "rectify.h"
 #include "proj_detector.h"
+#include "cornermatcher.h"
+#include "feature_matcher.h"
 
 #include <opencv2/opencv.hpp>
 
@@ -16,6 +18,8 @@
 const char send_img[] = "send.png";
 const char recv_img[] = "recv.png";
 
+const char pattern[] = "BCGYRMBYGRCMRBGCYMGBRYBM";
+
 // Server applications
 #define APP_DONE -1
 #define CAM_INIT 0
@@ -27,42 +31,84 @@ const char recv_img[] = "recv.png";
 #define LANG_JAVA 0
 #define LANG_C 1 
 
-Camera camera, projector;
+Camera camera(2592, 1944);
+Camera projector(600,600);
 
 void test() {
+	
+	cv::Mat pat = cv::imread("Lenna.png", CV_LOAD_IMAGE_GRAYSCALE);
+	cv::Mat img = cv::imread("colorlenna.jpg", CV_LOAD_IMAGE_GRAYSCALE);
+
+	FeatureMatcher fm(pat, img);
+	img = fm.match();
+
+	FeatureMatcher fm2(pat, img);
+	fm2.match();
+	
+	return;
+
+	Rectification r(8,8);
+	
 	cv::Mat ih = cv::imread("test_h.jpg"), iv = cv::imread("test_v.jpg");
 	cv::Mat mh, mv;
-	Rectification r(8, 8);
-	
-	// Rectify horizontal
-	if (r.rectify(ih, mh)) {
-		cv::imwrite("rectified_h.jpg", mh);
-	} else {
-		printf("Rectification failed\n");
-		return;
-	}
+	cv::Mat ch, cv;
+	Chessboard cbh(ih), cbv(iv);
+	pat = cv::imread("normal.jpg");
+	Chessboard goodboard(pat);
+	std::cout << (goodboard.cornersDetected()?"Corners found":"Corners not found") << std::endl;
+	CornerMatcher cm(goodboard, cbv);
+	cm.match();
 
 	// Recitfy vertical
-	if (r.rectify(iv, mv)) {
+	if (r.rectify(iv, cbv, mv)) {
 		cv::imwrite("rectified_v.jpg", mv);
 	} else {
-		printf("Rectification failed\n");
+		printf("Vertical rectification failed\n");
 		return;
 	}
 
+	
+	// Rectify horizontal
+	if (r.rectify(ih, cbh, mh)) {
+		cv::imwrite("rectified_h.jpg", mh);
+	} else {
+		printf("Horizontal rectification failed\n");
+		return;
+	}
 	std::vector<Line> lines_h, lines_v;
-	FindLines(mv, lines_v);
-	FindLines(mh, lines_h);
+	FindLines(mv, cv, lines_v);
+	FindLines(mh, ch, lines_h);
 
 	std::vector<cv::Point2f> points;
 	FindIntersections(lines_h, lines_v, points);
 
-	cv::Mat m = mv.clone();
+	cv::Mat m;
+	cv::addWeighted(mv, 0.5, mh, 0.5, 0.0, m);
 	for (auto it = points.begin(); it != points.end(); ++it) {
-		circle(m, *it, 3, cv::Scalar(255, 255, 255), -1, 8);
+		circle(m, *it, 3, cv::Scalar(0, 0, 0), -1, 8);
+		circle(m, *it, 2, cv::Scalar(255, 255, 255), -1, 8);
 	}
 
+	cv::imwrite("ch.jpg", ch);
+	cv::imwrite("cv.jpg", cv);
 	cv::imwrite("corners.jpg", m);
+
+	std::vector<cv::Point2f> proj_pts = classifyPoints(ch, cv, points, pattern);
+	img = ih.clone();
+	for (int i = 0; i < points.size(); ++i) {
+		if (proj_pts[i] == cv::Point2f(-1,-1)) continue;
+		std::cout << points[i] << " " << proj_pts[i] << std::endl;
+		cv::Point3f world(points[i].x*25.4/100.0, points[i].y*25.4/100.0, 0.0);
+		projector.addPoint(world, proj_pts[i]);
+		cv::Point2f p = r.invert(points[i]);
+		circle(img, p, 3, cv::Scalar(0, 0, 0), -1, 8);
+		circle(img, p, 2, cv::Scalar(255, 255, 255), -1, 8);
+	}
+
+	cv::imwrite("final.jpg", img);
+
+	projector.cvCalibrate();
+	
 
 }
 
@@ -201,7 +247,7 @@ void camCalib(int fd)
 {
 	cv::Mat m = cv::imread("test.jpg");
 //	camera.calibrate(m);
-	camera.cvCalibrate(m);
+	camera.cvCalibrate();
 }
 
 void serverFunc(int fd) {
