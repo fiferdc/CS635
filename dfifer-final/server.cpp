@@ -1,6 +1,6 @@
 #include "server.h"
 
-#include <strings.h>
+#include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -18,15 +18,17 @@ void * _accept(void * s_ptr) {
 			perror("ERROR: Accept\n");
 			return (void*)1;
 		} else {
-			printf("Client connection has been established\n");
+			printf("\033[1;32m[%s]\033[0m Client connection has been established\n", server->name());
 		}
 		server->exec(fd);	
+		printf("\033[1;32m[%s]\033[0m Session complete\n", server->name());
 	}
 }
 
-Server::Server(int port, ServerFunc func)
+Server::Server(const char* name, int port, ServerFunc func)
 		: _port(port), _func(func) {
 
+	_name = strdup(name);
 	sockaddr_in server;
 	_fd = socket(AF_INET, SOCK_STREAM, 0);
 	bzero((char *) &server, sizeof(server));
@@ -38,7 +40,8 @@ Server::Server(int port, ServerFunc func)
 		perror("ERROR: Bind\n");
 	}
 
-	listen(_fd, 5);	
+	listen(_fd, 5);
+	printf("\033[1;32m[%s]\033[0m Listening for connections\n", _name);	
 }
 
 Server::~Server()
@@ -46,6 +49,7 @@ Server::~Server()
 	for (auto it = _threads.begin(); it != _threads.end(); ++it) {
 		pthread_join(*it, NULL);
 	}
+	delete(_name);
 }
 
 void

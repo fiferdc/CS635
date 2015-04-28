@@ -6,13 +6,17 @@
 
 class Rectification {
  public:
-	Rectification(int, int);
-	bool rectify(const cv::Mat&, Chessboard c, cv::Mat&);
-	cv::Point2f invert(cv::Point2f);
+	Rectification(const cv::Mat&, const cv::Mat&);
+	cv::Mat rectify();
+	std::vector<cv::Point2f> getPatPts() { return _patPts; }
+	std::vector<cv::Point2f> getImgPts() { return _imgPts; }
  private:
-	cv::Size _grid;
-	cv::Size _innerGrid;
-	cv::Mat _transformation;
+	cv::Mat _pat;
+	cv::Mat _img;
+	std::vector<cv::Point2f> _patPts;
+	std::vector<cv::Point2f> _imgPts;
+	cv::Mat _hPatToPat;
+	cv::Mat _hPatToImg;
 };
 
 #endif  // _RECTIFY_H_

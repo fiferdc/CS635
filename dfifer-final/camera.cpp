@@ -6,6 +6,7 @@ Camera::Camera(int width, int height) {
   _cameraParams.f = 0.0;
 	_width = width;
 	_height = height;
+	_calibrated = false;
 }
   
 void
@@ -475,6 +476,7 @@ Camera::calibrate(cv::Mat& input)
 
   double r[9] = {r1, r2, r3, r4, r5, r6, r7, r8, r9};
   _rMat = cv::Mat(3, 3, CV_64F, r);
+	cv::transpose(_rMat, _rMatT);
 	double k[9] = {f/_cameraParams.dx, 0.0, _cameraParams.Cx, 0.0, f/_cameraParams.dy, _cameraParams.Cy, 0.0, 0.0, 1.0};
   _camMat = cv::Mat(3, 3, CV_64F, k);
 	double t[3] = {Tx, Ty, Tz};
@@ -503,6 +505,11 @@ void
 Camera::cvCalibrate()
 {
 	
+	if (_worldPts.size() == 0 || _imgPts.size() == 0 || _worldPts.size() != _imgPts.size()) {
+		std::cerr << "ERROR: Invalid number of input points to calibration" << std::endl;
+		exit(1);
+	}
+	
 	std::vector<std::vector<cv::Point3f> > objectPoints (1);
 	std::vector<std::vector<cv::Point2f> > imagePoints (1);
 	objectPoints[0] = _worldPts;
@@ -529,6 +536,8 @@ Camera::cvCalibrate()
 	cv::Rodrigues(rvecs[0], R_);
 	std::cout << R_ << std::endl;
 	std::cout << tvecs[0] << std::endl;
+
+	_calibrated = true;
 }
 
 void
@@ -536,6 +545,7 @@ Camera::reset()
 {
 	_worldPts.clear();
 	_imgPts.clear();
+	_calibrated = false;
 }
 
 void
@@ -545,4 +555,56 @@ Camera::addPoint(cv::Point3f world, cv::Point2f img)
 	_imgPts.push_back(img);
 }
 
+cv::Vec3f
+Camera::camX() const
+{
+	float x = _rMat.at<float>(0,0);
+	float y = _rMat.at<float>(0,1);
+	float z = _rMat.at<float>(0,2);
+	return cv::Vec3f(x, y, z);
+}
 
+cv::Vec3f
+Camera::camY() const
+{
+	float x = _rMat.at<float>(1,0);
+	float y = _rMat.at<float>(1,1);
+	float z = _rMat.at<float>(1,2);
+	return cv::Vec3f(x, y, z);
+}
+
+cv::Vec3f
+Camera::camZ() const
+{
+	float x = _rMat.at<float>(2,0);
+	float y = _rMat.at<float>(2,1);
+	float z = _rMat.at<float>(2,2);
+	return cv::Vec3f(x, y, z);
+}
+
+cv::Point3f
+Camera::cop() const
+{
+	cv::Mat v(3,1, CV_32F);
+	v.at<float>(0,0) = -_tVec.at<float>(0,0);
+	v.at<float>(1,0) = -_tVec.at<float>(1,0);
+	v.at<float>(2,0) = -_tVec.at<float>(2,0);
+	cv::Mat w = _rMatT * v;
+	float x = w.at<float>(0,0);
+	float y = w.at<float>(1,0);
+	float z = w.at<float>(2,0);
+	return cv::Point3f(x, y, z);
+}
+
+//cv::Point3f reprojectToImage(cv::Point2f);
+//cv::Point3f reproject(cv::Point2f, const Camera&, cv::Point2f);
+
+cv::Point2f
+Camera::project(cv::Point3f p) const
+{
+	std::vector<cv::Point3f> wPts(1);
+	wPts[0] = p;
+	std::vector<cv::Point2f> iPts;
+	cv::projectPoints(wPts, _rMat, _tVec, _camMat, _distCoeffs, iPts);
+	return iPts[0];
+}

@@ -6,6 +6,9 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
+void
+relabel(float** actual, cv::Mat centers, int* relabeled, int count=6);
+
 bool
 FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out);
 

@@ -7,21 +7,21 @@
 #include <list>
 
 void
-relabel(float** actual, cv::Mat centers, int* relabeled)
+relabel(float** actual, cv::Mat centers, int* relabeled, int count=6)
 {
 	std::list<int> labels;
-	for (int i = 0; i < 7; ++i) {
+	for (int i = 0; i < count; ++i) {
 		labels.push_back(i);
 	}
 	
-	float c[7][3];
-	for (int i = 0; i < 7; ++i) {
+	float c[count][3];// = new float[count][3];
+	for (int i = 0; i < count; ++i) {
 		for (int j = 0; j < 3; ++j) {
 			c[i][j] = centers.at<float>(i, j);
 		}		
 	}
 	
-	for (int i = 0; i < 7; ++i) {
+	for (int i = 0; i < count; ++i) {
 		int match = -1;
 		float min_err = 100000;
 		std::cout << "Matching [ "
@@ -48,21 +48,21 @@ relabel(float** actual, cv::Mat centers, int* relabeled)
 bool
 FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 {
-	cv::Mat lab;
+	cv::Mat lab, yuv;
 
-	cv::Size dsize(700,700);
+	cv::Size dsize = in.size();
 	cv::Size _grid(8,8);
-
-	cv::cvtColor(in, lab, CV_BGR2Lab);
+	
+	cv::cvtColor(in, lab, CV_BGR2YUV);
 	cv::imwrite("lab.jpg", lab);
 
-/*	
+	
 	cv::Mat blur;
-	cv::blur(lab, blur, cv::Size(3,3));
+	cv::blur(lab, blur, cv::Size(5,5));
 	cv::imwrite("blur.jpg", blur); 
 	lab = blur.clone();
-*/
-	std::vector<cv::Mat> Lab;
+
+	/*std::vector<cv::Mat> Lab;
 	cv::split(lab, Lab);
 	
 	Lab[0] = cv::Mat::zeros(Lab[0].size(), Lab[0].type());
@@ -85,20 +85,20 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 
 	cv::Mat ab;
 	cv::merge(&Lab[1], 2, ab);
-
+*/
 	cv::Mat samples(dsize.width*dsize.height, 3, CV_32F);
 	for (int x = 0; x < dsize.width; ++x) {
 		for (int y = 0; y < dsize.height; ++y) {
 			samples.at<float>(y + x*dsize.height, 0) = 0;
 			for (int z = 0; z < 2; ++z) {
-				samples.at<float>(y + x*dsize.height, z+1) = ab.at<cv::Vec2b>(y,x)[z];
+				samples.at<float>(y + x*dsize.height, z+1) = lab.at<cv::Vec3b>(y,x)[z+1];
 			}
 		}
 	}
 
 	// Cluster segments (6 colors + black squares)
 	cv::Mat labels, centers;
-	cv::kmeans(samples, 7, labels, 
+	cv::kmeans(samples, 6, labels, 
 			cv::TermCriteria(CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10000, 0.001),
 			3, cv::KMEANS_PP_CENTERS, centers);
 
@@ -111,8 +111,8 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 	float lab_c[3] = {0, 255-48, 255-14};
 	float lab_b[3] = {0, 79, 255-107};
 	float lab_m[3] = {0, 98, 255-60};
-	float *lab_colors[7] = {
-		black, lab_r, lab_y, lab_g, lab_c, lab_b, lab_m
+	float *lab_colors[6] = {
+		lab_r, lab_y, lab_g, lab_c, lab_b, lab_m
 	};
 
 	float rgb_r[3] = {255, 0, 0};
@@ -121,13 +121,13 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 	float rgb_c[3] = {0, 255, 255};
 	float rgb_b[3] = {0, 0, 255};
 	float rgb_m[3] = {255, 0, 255};
-	float *rgb_colors[7] = {
-		black, rgb_r, rgb_y, rgb_g, rgb_c, rgb_b, rgb_m
+	float *rgb_colors[6] = {
+		rgb_r, rgb_y, rgb_g, rgb_c, rgb_b, rgb_m
 	};
 
-	int relabeled[7];
+	int relabeled[6];
 	cv::Mat rgbCenters = cv::Mat::zeros(centers.size(), CV_32F);
-	int lcount[7] = {0,0,0,0,0,0,0};
+	int lcount[6] = {0,0,0,0,0,0};
 	for (int x = 0; x < dsize.width; ++x) {
 		for (int y = 0; y < dsize.height; ++y) {
 			int label = labels.at<int>(y+dsize.height*x,0);
@@ -138,7 +138,7 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 			lcount[label]++;
 		}
 	}
-	for (int i = 0; i < 7; ++i) {
+	for (int i = 0; i < 6; ++i) {
 		for (int z= 0; z < 3; ++z) {
 			rgbCenters.at<float>(i,z) /= lcount[i];		
 		}
@@ -149,7 +149,7 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 
 
 	relabel(rgb_colors, rgbCenters, relabeled);
-	for (int i = 0; i < 7; ++i) {
+	for (int i = 0; i < 6; ++i) {
 		for (int j = 0; j < 3; ++j) {
 			centers.at<float>(i, j) = rgb_colors[relabeled[i]][j];
 		}		
@@ -177,6 +177,7 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 	cv::Canny(clusters, canny, 50, 200, 3);
 
 	// Remove natural edges
+	/*
 	int erase = 4;
 	for (int x = 1; x < _grid.width-1; ++x) {
 		for (int y = 0; y < dsize.height; ++y) {
@@ -193,6 +194,7 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 			}
 		}
 	}	
+	*/
 	cv::imwrite("canny.jpg", canny);
 
 	// Detect lines
@@ -221,17 +223,48 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 	std::cout << std::endl;
 #else 
 	std::vector<cv::Vec4i> lines;
-	cv::HoughLinesP(canny, lines, 3, CV_PI/180, 50, 150, 200);
+	cv::HoughLinesP(canny, lines, 3, CV_PI/180, 50, 450, 400);
 
 	// From http://opencvexamples.blogspot.com/2013/10/line-detection-by-hough-line-transform.html
 	out.clear();
 	std::cout << "Lines detected:\n";
+
+	// Find and ignore outlier lines (leave only the expected stripes)
+
+	double avg_theta = 0.0;
+	std::vector<cv::Point> pts1, pts2;
+	std::vector<double> theta;
 	for( size_t i = 0; i < lines.size(); i++ )
 	{
 		cv::Point pt1(lines[i][0], lines[i][1]), pt2(lines[i][2], lines[i][3]);
+		pts1.push_back(pt1);
+		pts2.push_back(pt2);
+		cv::Point2f p(pt2.x-pt1.x, pt2.y-pt1.y);
+		double t = fmod(360 + atan2(p.y, p.x) * 180.0 / CV_PI, 360.0);
+		theta.push_back(t);
+		avg_theta += t;
+	}
+	avg_theta /= lines.size();
+
+	double stddev = 0.0;
+	for( size_t i = 0; i < lines.size(); i++ )
+	{
+		double dx = theta[i] - avg_theta;
+		stddev += dx*dx;
+	}
+	stddev = sqrt(stddev / lines.size());
+
+
+	for( size_t i = 0; i < lines.size(); i++ )
+	{
+//		cv::Point pt1(lines[i][0], lines[i][1]), pt2(lines[i][2], lines[i][3]);
+		cv::Point pt1 = pts1[i], pt2 = pts2[i];
 		std::cout << pt1 << " " << pt2 << std::endl;
+		if (abs(theta[i] - avg_theta) < 1.5 * stddev) {
 		out.push_back(Line(pt1, pt2));
+		line( dlines, pt1, pt2, cv::Scalar(0,0,0), 3, CV_AA);
 		line( dlines, pt1, pt2, cv::Scalar(255,255,255), 1, CV_AA);
+		}
 	}
 	std::cout << std::endl;
 #endif
@@ -263,7 +296,7 @@ FindIntersections(const std::vector<Line>& h, const std::vector<Line>& v, std::v
 		cl_d(i, 0) = pts[i].x;
 		cl_d(i, 1) = pts[i].y;
 	}
-	clustering::DBSCAN dbs(0.01, 1, 4);
+	clustering::DBSCAN dbs(0.02, 1, 4);
 	dbs.fit(cl_d);
 
 	clustering::DBSCAN::Labels labels = dbs.get_labels();
@@ -272,6 +305,7 @@ FindIntersections(const std::vector<Line>& h, const std::vector<Line>& v, std::v
 	for (int i = 0; i < pts.size(); ++i) {
 		int l = labels[i];
 		clusters[l].push_back(pts[i]);
+		//ret.push_back(pts[i]);
 	}
 
 	// Find the center of each cluster
@@ -299,6 +333,7 @@ classifyPoints(
 	std::cout << pattern << std::endl;
 
 	std::vector<cv::Point2f> proj_pts;
+	proj_pts.clear();
 
 	// In BGR notation
 	cv::Vec3b black(0,0,0);
@@ -316,65 +351,70 @@ classifyPoints(
 		cv::Vec3b dc[2];
 		int x,y;
 
-		// Process horizontal stripes
-		if (h.at<cv::Vec3b>(p->y, p->x) == black) {
+		const int r = 10;
+
+		if (p->x < 0 || p->x >= h.cols || p->y < 0 || p->y >= h.rows) {
 			valid = false;
-		}
-		dc[0] = h.at<cv::Vec3b>(p->y-7, p->x);
-		dc[1] = h.at<cv::Vec3b>(p->y+7, p->x);
+		} else {
+			// Process horizontal stripes
+			if (h.at<cv::Vec3b>(p->y, p->x) == black) {
+				valid = false;
+			}
+			dc[0] = h.at<cv::Vec3b>(p->y-r, p->x);
+			dc[1] = h.at<cv::Vec3b>(p->y+r, p->x);
 
-		// Pattern is reversed this way
-		for (int i = 0; i < 2; ++i) {
-			if (dc[i] == red)
-				e[1-i] = 'R';
-			else if (dc[i] == yellow)
-				e[1-i] = 'Y';
-			else if (dc[i] == green)
-				e[1-i] = 'G';
-			else if (dc[i] == cyan)
-				e[1-i] = 'C';
-			else if (dc[i] == blue)
-				e[1-i] = 'B';
-			else if (dc[i] == magenta)
-				e[1-i] = 'M';
-			else
-				e[1-i] = 'X';
-		}
+			// Pattern is reversed this way
+			for (int i = 0; i < 2; ++i) {
+				if (dc[i] == red)
+					e[1-i] = 'R';
+				else if (dc[i] == yellow)
+					e[1-i] = 'Y';
+				else if (dc[i] == green)
+					e[1-i] = 'G';
+				else if (dc[i] == cyan)
+					e[1-i] = 'C';
+				else if (dc[i] == blue)
+					e[1-i] = 'B';
+				else if (dc[i] == magenta)
+					e[1-i] = 'M';
+				else
+					e[1-i] = 'X';
+			}
 
-		const char *m = strstr(pattern, e);
-		if (m == NULL) valid = false;
-		y = 25*(1+m-pattern);
+			const char *m = strstr(pattern, e);
+			if (m == NULL) valid = false;
+			y = 25*(1+m-pattern);
 
-		// Process vertical stripes
-		if (v.at<cv::Vec3b>(p->x, p->y) == black) {
-			valid = false;
-		}
+			// Process vertical stripes
+			if (v.at<cv::Vec3b>(p->x, p->y) == black) {
+				valid = false;
+			}
 
-		dc[0] = v.at<cv::Vec3b>(p->y, p->x-7);
-		dc[1] = v.at<cv::Vec3b>(p->y, p->x+7);
+			dc[0] = v.at<cv::Vec3b>(p->y, p->x-r);
+			dc[1] = v.at<cv::Vec3b>(p->y, p->x+r);
 
 
-		for (int i = 0; i < 2; ++i) {
-			if (dc[i] == red)
-				e[i] = 'R';
-			else if (dc[i] == yellow)
-				e[i] = 'Y';
-			else if (dc[i] == green)
-				e[i] = 'G';
-			else if (dc[i] == cyan)
-				e[i] = 'C';
-			else if (dc[i] == blue)
-				e[i] = 'B';
-			else if (dc[i] == magenta)
-				e[i] = 'M';
-			else 
-				e[i] = 'X';
-		}
-	
-		m = strstr(pattern, e);
-		if (m == NULL) valid = false;
-		x = 25*(1+m-pattern);
-		
+			for (int i = 0; i < 2; ++i) {
+				if (dc[i] == red)
+					e[i] = 'R';
+				else if (dc[i] == yellow)
+					e[i] = 'Y';
+				else if (dc[i] == green)
+					e[i] = 'G';
+				else if (dc[i] == cyan)
+					e[i] = 'C';
+				else if (dc[i] == blue)
+					e[i] = 'B';
+				else if (dc[i] == magenta)
+					e[i] = 'M';
+				else 
+					e[i] = 'X';
+			}
+
+			m = strstr(pattern, e);
+			if (m == NULL) valid = false;
+			x = 25*(1+m-pattern);
+		}		
 		if (valid)
 			proj_pts.push_back(cv::Point2f(x,y));
 		else 

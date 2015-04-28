@@ -1,3 +1,5 @@
+#!/usr/bin/colormake
+
 F=gfortran -g
 CXX=g++ -g -std=c++11
 CC=gcc -g
@@ -5,7 +7,7 @@ BUILD=build
 TARGET=calib_server
 SOURCE=$(wildcard *.cpp) $(wildcard minpack/*.f) $(wildcard triangulation/*.c) $(wildcard DBSCAN/*.cpp)
 OBJ=$(addsuffix .o, $(addprefix $(BUILD)/, $(basename $(notdir $(SOURCE))))) 
-LDFLAGS= -lglut -lGL -lGLU -lglui -L/usr/local/lib -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_calib3d -lopencv_video -lopencv_features2d -pthread -lopencv_nonfree -lopencv_flann
+LDFLAGS= -lglut -lGL -lGLU -lglui -L/usr/local/lib -lopencv_core -lopencv_highgui -lopencv_imgproc -lopencv_calib3d -lopencv_video -lopencv_features2d -pthread -lopencv_nonfree -lopencv_flann -lopencv_gpu
 Boost_USE_STATIC_LIBS=1
 Boost_USE_MULTITHREADED=0
 Boost_USE_STATIC_RUNTIME=1
@@ -29,6 +31,10 @@ $(TARGET): $(OBJ)
 	mkdir -p $(BUILD)
 	$(CXX) -fopenmp -o $@ $^ $(LDFLAGS)
 
+run: $(TARGET)
+	./$(TARGET)
+
 clean:
 	rm $(BUILD)/*.o $(TARGET)
+
 

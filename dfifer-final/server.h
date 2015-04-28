@@ -8,12 +8,13 @@ typedef void (*ServerFunc)(int);
 
 class Server {
  public:
-	Server(int socket, ServerFunc func);
+	Server(const char *name, int socket, ServerFunc func);
 	~Server();
 	
 	// Server accessors
-	int fd() { return _fd; }
-	int port() { return _port; }
+	int fd() const { return _fd; }
+	int port() const { return _port; }
+	char* name() const { return _name; }
 	
 	// Create a new thread and runs func
 	void run();
@@ -22,6 +23,7 @@ class Server {
 	void exec(int fd) { if (_func) (*_func)(fd); } 
 
  private:
+	char* _name;
 	int _port;
 	int _fd;
 	ServerFunc _func;
