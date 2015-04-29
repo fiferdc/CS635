@@ -6,6 +6,7 @@
 #include "cornermatcher.h"
 #include "feature_matcher.h"
 #include "epipolar.h"
+#include "structured_light.h"
 
 #include <opencv2/opencv.hpp>
 
@@ -32,6 +33,8 @@ const char pattern[] = "BCGYRMBYGRCMRBGCYMGBRYBM";
 sem_t sem_p;
 sem_t sem_c;
 
+int android_msg = 1;
+
 // Server applications
 #define APP_DONE -1
 #define CAM_INIT 0
@@ -44,11 +47,62 @@ sem_t sem_c;
 #define LANG_JAVA 0
 #define LANG_C 1 
 
+int w_iter = 10;
+int h_iter = 10;
+
 Camera camera(2592, 1944);
 Camera projector(600,600);
 
 void test() {
+
+	// Test of pixel intensity
 	
+
+	cv::Mat p22 = cv::imread("p38.jpg");
+	cv::Mat p23 = cv::imread("p39.jpg");
+	cv::cvtColor(p22, p22, CV_BGR2Lab);
+	cv::cvtColor(p23, p23, CV_BGR2Lab);
+	cv::Mat slImg(p22.size(), CV_32FC1);
+
+
+	StructuredLight sl(p22.size());
+	for (int i = 2; i < 20; i += 2) {
+		char filename[10];
+		sprintf(filename, "p%i.jpg", i);
+		cv::Mat on = cv::imread(filename);
+		sprintf(filename, "p%i.jpg", i+1);
+		cv::Mat off = cv::imread(filename);
+		sl.addImagePair(on, off, 0);
+	}
+	for (int i = 22; i < 40; i += 2) {
+		char filename[10];
+		sprintf(filename, "p%i.jpg", i);
+		cv::Mat on = cv::imread(filename);
+		sprintf(filename, "p%i.jpg", i+1);
+		cv::Mat off = cv::imread(filename);
+		sl.addImagePair(on, off, 1);
+	}
+	sl.decode();
+	sl.getColored();
+
+	for (int x = 0; x < p22.cols; ++x) {
+		for (int y = 0; y < p22.rows; ++y) {
+			float f1 = p22.at<cv::Vec3b>(y,x)[0];
+			float f2 = p23.at<cv::Vec3b>(y,x)[0];
+			float f = 0.5;
+
+			if (abs(f1-f2)/255.0 > 0.05) {
+				f += (f1 > f2)?0.5:-0.5;
+			}
+			slImg.at<float>(y,x) = f*255;
+		}
+	}
+
+	cv::imwrite("sltest.jpg", slImg);
+	return;
+
+	// Calibrate camera and projector
+
 	cv::Mat pat = cv::imread("Lenna.png");
 	cv::Mat ih = cv::imread("lenna_h2.jpg");
 	cv::Mat iv = cv::imread("lenna_v2.jpg");
@@ -264,16 +318,22 @@ void structuredLight(int fd)
 	int width, height;
 
 	// Read width and height massks
-	read(fd, &width, sizeof(width));
-	read(fd, &height, sizeof(height));
-	
+	read(fd, &w_iter, sizeof(width));
+	read(fd, &h_iter, sizeof(height));
+
+	w_iter--;
+	h_iter--;
+
+	width = 1 << (w_iter);
+	height = 1 << (h_iter);
+
 	printf("Projection size: %dx%d\n", width, height);
 	fflush(stdout);
 
 	for (int axis = 0; axis < 2; ++axis) {
 		int mask = axis?height:width;
 		
-		while (mask) {
+		while (mask > 1) {
 			for (int type = 0; type < 2; ++type) {
 				sem_wait(&sem_c);
 				printf("Sending data to projector...\n");
@@ -296,7 +356,9 @@ void structuredLight(int fd)
 			mask >>= 1;
 		}
 	}
+	android_msg = 0;
 	msg = -1;
+	usleep(1000000);
 	write(fd, &msg, sizeof(msg));
 }
 
@@ -357,13 +419,18 @@ void serverFunc(int fd) {
 			case CLIENT_TEST:
 			{
 				unsigned char c = 1;
-				for (int i = 0; i < 10; ++i) {
-					write(fd, &c, sizeof(c));
+				//for (int i = 0; i < 10; ++i) {
+				for (int i = 0; i < 2*w_iter + 2*h_iter; ++i) {
+//				do {	
 					sem_wait(&sem_p);
+					write(fd, &c, sizeof(c));
 					getImage2(fd);
 					sem_post(&sem_c);
-					usleep(2500000);
+					usleep(500000);
+	//			} while (android_msg);
 				}
+				c = android_msg;
+				write(fd, &c, sizeof(c));
 				//write(fd, &c, sizeof(c));
 				//getImage2(fd);
 				break;
@@ -377,7 +444,7 @@ void serverFunc(int fd) {
 int main(int argc, char** argv)
 {
 
-//	test();
+	test();
 //	return 0;
 
 	sem_init(&sem_p, 0, 0);
