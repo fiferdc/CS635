@@ -36,10 +36,14 @@ class Camera {
 	cv::Vec3f camY() const;
 	cv::Vec3f camZ() const;
 	cv::Point3f cop() const;
-	cv::Point3f reprojectToImage(cv::Point2f);
-	cv::Point3f reproject(cv::Point2f, const Camera&, cv::Point2f);
+	cv::Point3f reprojectToImage(cv::Point2f) const;
+	cv::Point3f reproject(cv::Point2f, const Camera&, cv::Point2f) const;
 	cv::Point2f	project(cv::Point3f) const;
-		
+	void printError(const char*) const;
+	cv::Mat getProjectionMat() const;
+	cv::Point2f undistortPoint(cv::Point2f) const;
+	cv::Point2f distortPoint(cv::Point2f) const;
+
  private:
 	int _width;
 	int _height;

@@ -40,6 +40,9 @@ Rectification::rectify()
 
 	warpPerspective(_img, img2, fm.getImgToPat(), _pat.size());
 	imwrite("img2.jpg", img2);
+	
+	_hImgToPat1 = fm.getImgToPat();
+	_hImgToPat2 = fm2.getImgToPat();
 
 	warpPerspective(_img, img2, fm.getImgToPat(), img2.size());
 	warpPerspective(img2, img3, fm2.getImgToPat(), _pat.size());
@@ -47,3 +50,12 @@ Rectification::rectify()
 
 	return img3;
 }
+
+cv::Mat 
+Rectification::applyRectification(const cv::Mat& m) {
+	cv::Mat img2, img3;
+	warpPerspective(m, img2, _hImgToPat1, _pat.size());
+	warpPerspective(img2, img3, _hImgToPat2, _pat.size());
+	return img3;
+}
+

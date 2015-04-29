@@ -11,7 +11,7 @@ SLPair::SLPair(const cv::Mat& on, const cv::Mat& off)
 			float f = -1.0;
 
 			if (abs(f1-f2)/255.0 > 0.05) {
-				f = (f1 > f2)?1.0:0.0;
+				f = (f1 > f2)?0.0:1.0;
 			}
 			_classification.at<float>(y,x) = f;
 		}
@@ -30,7 +30,7 @@ StructuredLight::StructuredLight(cv::Size dim)
 		: _dim(dim)
 {
 	_projId = cv::Mat::zeros(_dim, CV_32FC3);
-	_centers = cv::Mat::zeros(cv::Size(600,600), CV_32FC3);
+	_centers = cv::Mat::zeros(cv::Size(600,600), CV_64FC3);
 }
 
 
@@ -50,7 +50,7 @@ StructuredLight::decode()
 	// Y - Vertical ID
 	// Z - 0 if decoding is valid, 1 othterwise
 	
-	for (auto it = _h.begin(); it != _h.end(); ++it) {
+	for (auto it = _v.begin(); it != _v.end(); ++it) {
 		for (int x = 0; x < _dim.width; ++x) {
 			for (int y = 0; y < _dim.height; ++y) {
 				float f = _projId.at<cv::Vec3f>(y,x)[0];
@@ -62,7 +62,7 @@ StructuredLight::decode()
 			}
 		}	
 	}
-	for (auto it = _v.begin(); it != _v.end(); ++it) {
+	for (auto it = _h.begin(); it != _h.end(); ++it) {
 		for (int x = 0; x < _dim.width; ++x) {
 			for (int y = 0; y < _dim.height; ++y) {
 				float f = _projId.at<cv::Vec3f>(y,x)[1];
@@ -74,13 +74,22 @@ StructuredLight::decode()
 			}
 		}	
 	}
+
+	/*
+	 * flips output image
+	for (int x = 0; x < _dim.width; ++x) {
+		for (int y = 0; y < _dim.height; ++y) {
+			float f = _projId.at<cv::Vec3f>(y,x)[1];
+			_projId.at<cv::Vec3f>(y,x)[1] = 600 -f;
+		}
+	}*/
 	
 	// Find centers
 	for (int x = 0; x < _dim.width; ++x) {
 		for (int y = 0; y < _dim.height; ++y) {
 			cv::Vec3f v = _projId.at<cv::Vec3f>(y,x);
 			if (v[2] == 0) {
-				float X = v[0], Y = v[1];
+				double X = v[0], Y = v[1];
 				_centers.at<cv::Vec3f>(Y,X)[0] += x;
 				_centers.at<cv::Vec3f>(Y,X)[1] += y;
 				_centers.at<cv::Vec3f>(Y,X)[2]++;
@@ -90,7 +99,7 @@ StructuredLight::decode()
 
 	for (int x = 0; x < 600; ++x) {
 		for (int y = 0; y < 600; ++y) {
-			float f =  _centers.at<cv::Vec3f>(y,x)[2];
+			double f =  _centers.at<cv::Vec3f>(y,x)[2];
 			if (f > 0) {
 				_centers.at<cv::Vec3f>(y,x)[0] /= f;
 				_centers.at<cv::Vec3f>(y,x)[1] /= f;
@@ -140,5 +149,6 @@ StructuredLight::getColored()
 	}
 
 	cv::imwrite("colored.jpg", c);
+
 	return c;
 }

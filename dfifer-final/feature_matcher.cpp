@@ -38,9 +38,9 @@ FeatureMatcher::match()
 	std::vector<DMatch> good_matches;
 
 	for (int i = 0; i < desc1.rows; ++i) {
-		if (matches[i].distance < 3*min_dist) {
+//		if (matches[i].distance < 3*min_dist) {
 			good_matches.push_back(matches[i]);
-		}
+//		}
 	}
 
 	Mat img_matches;
@@ -58,7 +58,7 @@ FeatureMatcher::match()
 		scene.push_back( key2[ good_matches[i].trainIdx ].pt );
 	}
 
-	double ransac_thresh = 3;
+	double ransac_thresh = 2;
 	Mat H = findHomography( obj, scene, CV_RANSAC, ransac_thresh );
 	Mat H1 = findHomography( scene, obj, CV_RANSAC, ransac_thresh );
 
@@ -86,8 +86,14 @@ FeatureMatcher::match()
 
 	imwrite("matches.jpg", img_matches);
 
+
+	Mat src = Mat::ones(_pat.size(), CV_32F)*0xFF;
+	warpPerspective(src, _mask, H, _img.size());
+
 	Mat warp;
 	warpPerspective(_img, warp, H1, _pat.size());
+
+
 	imwrite("recovered.jpg", warp);
 
 	_patFeat = key1;

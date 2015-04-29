@@ -8,6 +8,7 @@ class Rectification {
  public:
 	Rectification(const cv::Mat&, const cv::Mat&);
 	cv::Mat rectify();
+	cv::Mat applyRectification(const cv::Mat&);
 	std::vector<cv::Point2f> getPatPts() { return _patPts; }
 	std::vector<cv::Point2f> getImgPts() { return _imgPts; }
  private:
@@ -17,6 +18,8 @@ class Rectification {
 	std::vector<cv::Point2f> _imgPts;
 	cv::Mat _hPatToPat;
 	cv::Mat _hPatToImg;
+	cv::Mat _hImgToPat1;
+	cv::Mat _hImgToPat2;
 };
 
 #endif  // _RECTIFY_H_

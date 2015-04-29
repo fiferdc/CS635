@@ -1,5 +1,7 @@
 #include "camera.h"
 
+#include <fstream>
+#include <iostream>
 #include <opencv2/opencv.hpp>
 
 Camera::Camera(int width, int height) {
@@ -475,8 +477,9 @@ Camera::calibrate(cv::Mat& input)
 */
 
   double r[9] = {r1, r2, r3, r4, r5, r6, r7, r8, r9};
-  _rMat = cv::Mat(3, 3, CV_64F, r);
-	cv::transpose(_rMat, _rMatT);
+	double rt[9] = {r1, r4, r7, r2, r5, r8, r3, r6, r9};
+	_rMat = cv::Mat(3, 3, CV_64F, r);
+	_rMatT = cv::Mat(3, 3, CV_64F, rt);
 	double k[9] = {f/_cameraParams.dx, 0.0, _cameraParams.Cx, 0.0, f/_cameraParams.dy, _cameraParams.Cy, 0.0, 0.0, 1.0};
   _camMat = cv::Mat(3, 3, CV_64F, k);
 	double t[3] = {Tx, Ty, Tz};
@@ -525,7 +528,15 @@ Camera::cvCalibrate()
 	cv::calibrateCamera(objectPoints, imagePoints, imageSize, cameraMatrix,
 			distCoeffs, rvecs, tvecs, 0);
 
-	_rMat = rvecs[0];
+	cv::Rodrigues(rvecs[0], _rMat);
+/*	_rMat = rvecs[0];
+	_rMatT = cv::Mat(3,3, CV_64F);
+	for (int x = 0; x < 3; ++x) {
+		for (int y = 0; y < 3; ++y) {
+			_rMatT.at<double>(y,x) = _rMat.at<double>(x,y);
+		}
+	}*/
+	cv::transpose(_rMat, _rMatT);
 	_tVec = tvecs[0];
 	_camMat = cameraMatrix;
 	_distCoeffs = distCoeffs;
@@ -585,19 +596,150 @@ Camera::camZ() const
 cv::Point3f
 Camera::cop() const
 {
-	cv::Mat v(3,1, CV_32F);
-	v.at<float>(0,0) = -_tVec.at<float>(0,0);
-	v.at<float>(1,0) = -_tVec.at<float>(1,0);
-	v.at<float>(2,0) = -_tVec.at<float>(2,0);
+	cv::Mat v(3,1, CV_64F);
+	v.at<double>(0,0) = -_tVec.at<double>(0,0);
+	v.at<double>(1,0) = -_tVec.at<double>(1,0);
+	v.at<double>(2,0) = -_tVec.at<double>(2,0);
 	cv::Mat w = _rMatT * v;
-	float x = w.at<float>(0,0);
-	float y = w.at<float>(1,0);
-	float z = w.at<float>(2,0);
+	double x = w.at<double>(0,0);
+	double y = w.at<double>(1,0);
+	double z = w.at<double>(2,0);
 	return cv::Point3f(x, y, z);
 }
 
-//cv::Point3f reprojectToImage(cv::Point2f);
-//cv::Point3f reproject(cv::Point2f, const Camera&, cv::Point2f);
+#define CVMAT(M,i,j) (M).at<double>((i),(j))
+
+cv::Point2f
+Camera::undistortPoint(cv::Point2f p) const
+{
+	cv::Mat src(1,1, CV_32FC2), dst(1, 1, CV_32FC2);
+	src.at<cv::Vec3f>(0,0)[0] = p.x;
+	src.at<cv::Vec3f>(0,0)[1] = p.y;
+	cv::undistortPoints(src, dst, _camMat, _distCoeffs);
+	float x = dst.at<cv::Vec3f>(0,0)[0];
+	float y = dst.at<cv::Vec3f>(0,0)[1];
+	return cv::Point2f(x,y);
+}
+
+cv::Point2f
+Camera::distortPoint(cv::Point2f p) const
+{
+	double fx = _camMat.at<double>(0,0);
+	double fy = _camMat.at<double>(1,1);
+	double ux = _camMat.at<double>(0,2);
+	double uy = _camMat.at<double>(1,2);
+	double k1 = _distCoeffs.at<double>(0,0);
+	double k2 = _distCoeffs.at<double>(1,0);
+	double p1 = _distCoeffs.at<double>(2,0);
+	double p2 = _distCoeffs.at<double>(3,0);
+	double k3 = _distCoeffs.at<double>(4,0);
+
+	double Xu, Yu;
+	double x = (p.x - ux)/fx, y = (p.y - uy)/fy;
+	//double x = p.x, y = p.y;
+	double r2 = x*x + y*y;
+	Xu = x * (1.0 + k1*r2 + k2*r2*r2 + k3*r2*r2*r2);
+	Yu = y * (1.0 + k1*r2 + k2*r2*r2 + k3*r2*r2*r2);
+
+	Xu += 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x);
+	Yu += p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y;
+
+	Xu = Xu * fx + ux;
+	Yu = Yu * fy + uy;
+
+	return cv::Point2f(Xu, Yu);
+}
+
+cv::Point3f
+Camera::reprojectToImage(cv::Point2f p) const
+{
+
+	double Xu = (p.x - _camMat.at<double>(0,2)) / _camMat.at<double>(0,0);
+	double Yu = (p.y - _camMat.at<double>(1,2)) / _camMat.at<double>(1,1);
+	cv::Mat v(3, 1, CV_64F);
+	v.at<double>(0,0) = Xu - _tVec.at<double>(0,0);
+	v.at<double>(1,0) = Yu - _tVec.at<double>(1,0);
+	v.at<double>(2,0) = 1.0 - _tVec.at<double>(2,0);
+	cv::Mat w = _rMatT * v;
+	double x = w.at<double>(0,0);
+	double y = w.at<double>(1,0);
+	double z = w.at<double>(2,0);
+	return cv::Point3f(x, y, z);
+}
+
+cv::Mat
+Camera::getProjectionMat() const
+{
+	cv::Mat m(3, 4, CV_64F);
+	for (int y = 0; y < 3; ++y) {
+		for (int x = 0; x < 3; ++x) {
+			m.at<double>(y,x) = _rMat.at<double>(y,x);
+		}
+		m.at<double>(y,3) = _tVec.at<double>(y,0);
+	}
+	cv::Mat cm = _camMat;
+	return cm * m;
+}
+
+
+
+cv::Point3f
+Camera::reproject(cv::Point2f p0, const Camera& cam, cv::Point2f p1) const
+{
+	// OpenCV attempt...
+
+//	p0 = undistortPoint(p0);
+//	p1 = cam.undistortPoint(p1);
+//	p0 = distortPoint(p0);
+//	p1 = cam.distortPoint(p1);
+/*	cv::Mat m0 = getProjectionMat();
+	cv::Mat m1 = cam.getProjectionMat();
+	cv::Mat pts0(2, 1, CV_32F), pts1(2, 1, CV_32F);
+	pts0.at<float>(0,0) = p0.x;
+	pts0.at<float>(1,0) = p0.y;
+	pts1.at<float>(0,0) = p1.x;
+	pts1.at<float>(1,0) = p1.y;
+	cv::Mat pts(4, 1, CV_32F);
+	cv::triangulatePoints(m0, m1, pts0, pts1, pts);
+	double x = pts.at<float>(0,0);
+	double y = pts.at<float>(1,0);
+	double z = pts.at<float>(2,0);
+	double w = pts.at<float>(3,0);
+	//return cv::Point3f(x,y,z);
+	return cv::Point3f(x/w,y/w,z/w);
+*/
+	// My Method
+	cv::Point3f c0 = cop();
+	cv::Point3f c1 = cam.cop();
+	cv::Point3f i0 = reprojectToImage(p0);
+	cv::Point3f i1 = cam.reprojectToImage(p1);
+	cv::Point3f a = i0-c0;
+	cv::Point3f b = c1-i1;
+	cv::Point3f c = c1-c0;
+	
+	cv::Mat M1(3,2,CV_64F);
+	cv::Mat M2(3,1,CV_64F);
+	cv::Mat X(2,1,CV_64F);
+	CVMAT(M1,0,0) = a.x;
+	CVMAT(M1,0,1) = b.x;
+	CVMAT(M1,1,0) = a.y;
+	CVMAT(M1,1,1) = b.y;
+	CVMAT(M1,2,0) = a.z;
+	CVMAT(M1,2,1) = b.z;
+	CVMAT(M2,0,0) = c.x;
+	CVMAT(M2,1,0) = c.y;
+	CVMAT(M2,2,0) = c.z;
+
+	int ret = cv::solve(M1, M2, X, cv::DECOMP_SVD);
+	float s = CVMAT(X,0,0), t = CVMAT(X,1,0);
+	if (s < 0) s = -s;
+	if (t < 0) t = -t;
+	cv::Point3f f0 = c0 + s * a;
+//	return f0;
+	cv::Point3f f1 = c1 + t * (i1-c1);
+//	return f0;
+	return (f0 + f1) * 0.5;
+}
 
 cv::Point2f
 Camera::project(cv::Point3f p) const
@@ -607,4 +749,20 @@ Camera::project(cv::Point3f p) const
 	std::vector<cv::Point2f> iPts;
 	cv::projectPoints(wPts, _rMat, _tVec, _camMat, _distCoeffs, iPts);
 	return iPts[0];
+}
+
+void
+Camera::printError(const char * filename) const
+{
+	std::ofstream ofs;
+	ofs.open(filename);
+	FILE *fp = fopen(filename, "w");
+	if (fp == NULL) return;
+	for (int i = 0; i < _imgPts.size(); ++i) {
+		cv::Point3f w = _worldPts[i];
+		cv::Point2f p0 = _imgPts[i];
+		cv::Point2f p1 = project(w);
+		ofs << "Image: " << p0 << "\tProjection: " << p1 << std::endl;
+	}
+	ofs.close();
 }

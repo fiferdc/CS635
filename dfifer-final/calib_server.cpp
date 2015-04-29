@@ -19,7 +19,7 @@
 #include <semaphore.h>
 #include <stdio.h>
 
-extern int gui_app(int argc, char *argv[]);
+extern int gui_app(std::vector<cv::Point3f>);
 
 
 const char send_img[] = "send.png";
@@ -54,19 +54,19 @@ Camera camera(2592, 1944);
 Camera projector(600,600);
 
 void test() {
+	
 
 	// Test of pixel intensity
 	
-
-	cv::Mat p22 = cv::imread("p38.jpg");
-	cv::Mat p23 = cv::imread("p39.jpg");
+	cv::Mat p22 = cv::imread("p20.jpg");
+	cv::Mat p23 = cv::imread("p21.jpg");
 	cv::cvtColor(p22, p22, CV_BGR2Lab);
 	cv::cvtColor(p23, p23, CV_BGR2Lab);
 	cv::Mat slImg(p22.size(), CV_32FC1);
 
 
 	StructuredLight sl(p22.size());
-	for (int i = 2; i < 20; i += 2) {
+	for (int i = 2; i < 22; i += 2) {
 		char filename[10];
 		sprintf(filename, "p%i.jpg", i);
 		cv::Mat on = cv::imread(filename);
@@ -74,7 +74,7 @@ void test() {
 		cv::Mat off = cv::imread(filename);
 		sl.addImagePair(on, off, 0);
 	}
-	for (int i = 22; i < 40; i += 2) {
+	for (int i = 24; i < 44; i += 2) {
 		char filename[10];
 		sprintf(filename, "p%i.jpg", i);
 		cv::Mat on = cv::imread(filename);
@@ -85,46 +85,63 @@ void test() {
 	sl.decode();
 	sl.getColored();
 
+	/*
 	for (int x = 0; x < p22.cols; ++x) {
 		for (int y = 0; y < p22.rows; ++y) {
 			float f1 = p22.at<cv::Vec3b>(y,x)[0];
 			float f2 = p23.at<cv::Vec3b>(y,x)[0];
 			float f = 0.5;
 
-			if (abs(f1-f2)/255.0 > 0.05) {
+			if (abs(f1-f2)/255.0 > 0.01) {
 				f += (f1 > f2)?0.5:-0.5;
 			}
 			slImg.at<float>(y,x) = f*255;
 		}
 	}
-
 	cv::imwrite("sltest.jpg", slImg);
 	return;
+	*/
 
 	// Calibrate camera and projector
 
 	cv::Mat pat = cv::imread("Lenna.png");
-	cv::Mat ih = cv::imread("lenna_h2.jpg");
-	cv::Mat iv = cv::imread("lenna_v2.jpg");
+//	cv::Mat ih = cv::imread("lenna_h.jpg");
+//	cv::Mat iv = cv::imread("lenna_v.jpg");
+	cv::Mat good = cv::imread("c0.jpg");
+
+	FeatureMatcher fm(pat, good);
+	cv::imwrite("warp.jpg", fm.match());
+	cv::Mat mask = fm.getMask();
+	cv::imwrite("mask.jpg", mask);
+
+	Rectification r(pat, good);
+	r.rectify();
+
+	cv::Mat ih = cv::imread("c1.jpg");
+	cv::Mat iv = cv::imread("c2.jpg");
+/*
+	for (int x = 0; x < mask.cols; ++x) {
+		for (int y = 0; y < mask.rows; ++y) {
+			if (mask.at<float>(y,x) == 0) {
+				for (int z = 0; z < 3; ++z) {
+					ih.at<cv::Vec3b>(y,x)[z] = 0;
+					iv.at<cv::Vec3b>(y,x)[z] = 0;
+				}
+			}
+		}
+	}
+
+	cv::imwrite("ih.jpg", ih);
+	cv::imwrite("iv.jpg", iv);
 
 	Rectification rh(pat, ih);
 	cv::Mat mh = rh.rectify();
 	
 	Rectification rv(pat, iv);
 	cv::Mat mv = rv.rectify();
-
-/*
-	return;
-
-	FeatureMatcher fm(pat, img);
-	img = fm.match();
-
-	FeatureMatcher fm2(pat, img);
-	fm2.match();
-	
-	return;
 */
-	
+	cv::Mat mh = r.applyRectification(ih);
+	cv::Mat mv = r.applyRectification(iv);
 	
 	cv::Mat ch, cv;
 	std::vector<Line> lines_h, lines_v;
@@ -141,8 +158,8 @@ void test() {
 	cv::Mat m;
 	cv::addWeighted(mv, 0.5, mh, 0.5, 0.0, m);
 	
-	std::vector<cv::Point2f> imgPts = rh.getImgPts();
-	std::vector<cv::Point2f> patPts = rh.getPatPts();
+	std::vector<cv::Point2f> imgPts = r.getImgPts();
+	std::vector<cv::Point2f> patPts = r.getPatPts();
 
 	std::cout << "imgPts size: " << imgPts.size() << std::endl;
 	std::cout << "patPts size: " << patPts.size() << std::endl;
@@ -151,7 +168,8 @@ void test() {
 		cv::Point2f imgPt = imgPts[i];
 		cv::Point2f patPt = patPts[i];
 		if (imgPt.x != imgPt.x || imgPt.y != imgPt.y) continue;
-		cv::Point3f world(patPt.x*7*25.4/512.0, patPt.y*7*25.4/512.0, 0.0);
+		imgPt.y = good.rows - imgPt.y;
+		cv::Point3f world(patPt.x*7*25.4/512.0, (512-patPt.y)*7*25.4/512.0, 0.0);
 //		std::cout << world << "->" << imgPt << std::endl;
 		camera.addPoint(world, imgPt);
 	}
@@ -165,6 +183,7 @@ void test() {
 
 	std::cout << "Camera calibration" << std::endl;
 	camera.cvCalibrate();
+	camera.printError("cam_err.txt");
 
 	cv::imwrite("corners.jpg", corners);
 
@@ -179,7 +198,8 @@ void test() {
 		if (proj_pts[i] == cv::Point2f(-1,-1)) continue;
 		if (proj_pts[i].x != proj_pts[i].x) continue;
 		std::cout << points[i] << " " << proj_pts[i] << std::endl;
-		cv::Point3f world(points[i].x*7*25.4/512.0, points[i].y*7*25.4/512.0, 0.0);
+		proj_pts[i].y = 600 - proj_pts[i].y;
+		cv::Point3f world(points[i].x*7*25.4/512.0, (512.0-points[i].y)*7*25.4/512.0, 0.0);
 		projector.addPoint(world, proj_pts[i]);
 		worldPts.push_back(world);
 		discoveredPts.push_back(proj_pts[i]);
@@ -187,11 +207,11 @@ void test() {
 		//circle(img, p, 3, cv::Scalar(0, 0, 0), -1, 8);
 		//circle(img, p, 2, cv::Scalar(255, 255, 255), -1, 8);
 	}
-
 	//cv::imwrite("final.jpg", img);
 	
 	std::cout << "Projector calibration" << std::endl;
 	projector.cvCalibrate();
+	projector.printError("proj_err.txt");
 
 	// Construct epipolar relationship between the camera and projector
 
@@ -210,15 +230,49 @@ void test() {
 	}
 	cv::imwrite("validation.jpg", validation);
 
-	std::cout << "Validation" << std::endl;
-	for (int i = 0; i < cam1.size(); ++i) {
+	//std::cout << "Validation" << std::endl;
+	/*for (int i = 0; i < cam1.size(); ++i) {
 		cv::Point2f imgPt = cam1[i];
 		cv::Point2f expected = discoveredPts[i];
 		cv::Point2f actual = er.findPointInCamera(imgPt, expected.x, 0, 0);
 		std::cout << expected << " " << actual << std::endl;
-	}
+	}*/
 
 	// Reconstruct geometry
+
+	cv::Mat	centers = sl.getCenters();
+	std::vector<cv::Point3f> reprojection;
+	std::cout << "Reprojection" << std::endl;
+	for (int x = 0; x < 7; ++x) {
+		for (int y = 0; y < 7; ++y) {
+			float X = x*25.4;
+			float Y = y*25.4;
+			cv::Point3f w(X, Y, 0);
+			reprojection.push_back(w);
+		}
+	}
+
+	// Also draw scene from projector's view
+	cv::Mat invImg = cv::Mat::zeros(600, 600, CV_8UC3);
+	cv::Mat colored = cv::imread("c2.jpg");
+	for (int x = 0; x < 600; ++x) {
+		for (int y = 0; y < 600; ++y) {
+			cv::Vec3f v = centers.at<cv::Vec3f>(y,x);
+			if (v[2] > 0) {
+				float X = v[0], Y = v[1];
+				cv::Point2f p0(x,y);
+				cv::Point2f p1(X,Y);
+				invImg.at<cv::Vec3b>(y,x) = colored.at<cv::Vec3b>(Y,X);
+				cv::Point3f p = projector.reproject(p0, camera, p1);
+				reprojection.push_back(p);
+//				std::cout << p0 << "<=>" << p1 << std::endl;
+//				std::cout << p << std::endl;
+			}
+		}
+	}
+	cv::imwrite("invImg.jpg", invImg);
+
+	gui_app(reprojection);
 
 
 }
@@ -311,21 +365,76 @@ void getImage2(int fd)
 	fclose(img);
 }
 
-void structuredLight(int fd)
+// Calibrates camera and projector
+void beginCalibration(int fd)
 {
 
 	int msg;
+
+
+	// White Image
+		sem_wait(&sem_c);
+		printf("Sending data to projector...\n");
+		// Send type color
+		msg = 0;
+		write(fd, &msg, sizeof(msg));
+		
+		// Send orientation (doesn't matter)
+		msg = 0;
+		write(fd, &msg, sizeof(msg));
+
+		// Send level (big number!)
+		msg = 20000;
+		write(fd, &msg, sizeof(msg));
+
+		printf("Waiting on response from projector...\n");
+		read(fd, &msg, sizeof(msg));
+		sem_post(&sem_p);
+
+	// Colored Stripes	
+	for (int axis = 0; axis < 2; ++axis) {
+			sem_wait(&sem_c);
+			printf("Sending data to projector...\n");
+			// Send type color
+			msg = 2;
+			write(fd, &msg, sizeof(msg));
+			
+			// Send orientation (vertical or horizontal)
+			msg = axis;
+			write(fd, &msg, sizeof(msg));
+
+			// Send level (doesn't matter)
+			msg = 0;
+			write(fd, &msg, sizeof(msg));
+
+			printf("Waiting on response from projector...\n");
+			read(fd, &msg, sizeof(msg));
+			sem_post(&sem_p);
+	}
+	usleep(10000000);
+}
+
+void structuredLight(int fd)
+{
+	int msg;
 	int width, height;
 
-	// Read width and height massks
+	// Read width and height masks
 	read(fd, &w_iter, sizeof(width));
 	read(fd, &h_iter, sizeof(height));
-
-	w_iter--;
-	h_iter--;
+	
+	w_iter;
+	h_iter;
 
 	width = 1 << (w_iter);
 	height = 1 << (h_iter);
+
+	w_iter++;
+	h_iter++;
+	
+	// Initialize calibration
+	beginCalibration(fd);
+
 
 	printf("Projection size: %dx%d\n", width, height);
 	fflush(stdout);
@@ -333,7 +442,7 @@ void structuredLight(int fd)
 	for (int axis = 0; axis < 2; ++axis) {
 		int mask = axis?height:width;
 		
-		while (mask > 1) {
+		while (mask) {
 			for (int type = 0; type < 2; ++type) {
 				sem_wait(&sem_c);
 				printf("Sending data to projector...\n");
@@ -361,6 +470,7 @@ void structuredLight(int fd)
 	usleep(1000000);
 	write(fd, &msg, sizeof(msg));
 }
+
 
 void printText(int fd)
 {
@@ -397,7 +507,7 @@ void serverFunc(int fd) {
 	while ((sa = jr.readInt()) != APP_DONE) { 
 		printf("Server Application: %d\n", sa);
 		switch(sa) {
-			case CAM_INIT:
+		case CAM_INIT:
 			{
 				camInit(fd);
 				break;
@@ -418,9 +528,10 @@ void serverFunc(int fd) {
 			}
 			case CLIENT_TEST:
 			{
+				usleep(1000000);
 				unsigned char c = 1;
 				//for (int i = 0; i < 10; ++i) {
-				for (int i = 0; i < 2*w_iter + 2*h_iter; ++i) {
+				for (int i = 0; i < 3 + 2*w_iter + 2*h_iter; ++i) {
 //				do {	
 					sem_wait(&sem_p);
 					write(fd, &c, sizeof(c));
@@ -443,9 +554,8 @@ void serverFunc(int fd) {
 
 int main(int argc, char** argv)
 {
-
 	test();
-//	return 0;
+	return 0;
 
 	sem_init(&sem_p, 0, 0);
 	sem_init(&sem_c, 0, 1);

@@ -24,6 +24,7 @@ class StructuredLight {
 	void addImagePair(const cv::Mat&, const cv::Mat&, int);
 	void decode();
 	cv::Mat	getColored();
+	cv::Mat getCenters() const { return _centers; }
  private:
 	cv::Size _dim;
 	std::vector<SLPair> _v;

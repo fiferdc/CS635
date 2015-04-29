@@ -22,7 +22,7 @@ relabel(float** actual, cv::Mat centers, int* relabeled, int count=6)
 	}
 	
 	for (int i = 0; i < count; ++i) {
-		int match = -1;
+		int match = 0;
 		float min_err = 100000;
 		std::cout << "Matching [ "
 			 << actual[i][0] << ", "
@@ -115,19 +115,19 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 		lab_r, lab_y, lab_g, lab_c, lab_b, lab_m
 	};
 
-	float rgb_r[3] = {255, 0, 0};
-	float rgb_y[3] = {255, 255, 0};
+	float rgb_r[3] = {0, 0, 255};
+	float rgb_y[3] = {0, 255, 255};
 	float rgb_g[3] = {0, 255, 0};
-	float rgb_c[3] = {0, 255, 255};
-	float rgb_b[3] = {0, 0, 255};
+	float rgb_c[3] = {255, 255, 0};
+	float rgb_b[3] = {255, 0, 0};
 	float rgb_m[3] = {255, 0, 255};
-	float *rgb_colors[6] = {
+	float *rgb_colors[] = {
 		rgb_r, rgb_y, rgb_g, rgb_c, rgb_b, rgb_m
 	};
 
 	int relabeled[6];
 	cv::Mat rgbCenters = cv::Mat::zeros(centers.size(), CV_32F);
-	int lcount[6] = {0,0,0,0,0,0};
+	int lcount[6] = {0};
 	for (int x = 0; x < dsize.width; ++x) {
 		for (int y = 0; y < dsize.height; ++y) {
 			int label = labels.at<int>(y+dsize.height*x,0);
@@ -151,7 +151,8 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 	relabel(rgb_colors, rgbCenters, relabeled);
 	for (int i = 0; i < 6; ++i) {
 		for (int j = 0; j < 3; ++j) {
-			centers.at<float>(i, j) = rgb_colors[relabeled[i]][j];
+			centers.at<float>(i, j) = rgb_colors[i][j];
+			centers.at<float>(i, j) = rgbCenters.at<float>(i,j);
 		}		
 	}
 	
@@ -166,6 +167,27 @@ FindLines(const cv::Mat& in, cv::Mat& clusters, std::vector<Line>& out)
 			clusters.at<cv::Vec3b>(y,x)[0] = centers.at<float>(label, 0);
 			clusters.at<cv::Vec3b>(y,x)[1] = centers.at<float>(label, 1);
 			clusters.at<cv::Vec3b>(y,x)[2] = centers.at<float>(label, 2);
+		}
+	}
+
+	
+	cv::Mat hue;
+	cv::cvtColor(clusters, hue, CV_BGR2HSV);
+	for (int x = 0; x < dsize.width; ++x) {
+		for (int y = 0; y < dsize.height; ++y) {
+		//rgb_r, rgb_y, rgb_g, rgb_c, rgb_b, rgb_m
+			float h = hue.at<cv::Vec3b>(y,x)[0] * 2;
+			float *c;
+			if (h < 30) c = rgb_r;
+			else if (h < 90) c = rgb_y;
+			else if (h < 150) c = rgb_g;
+			else if (h < 210) c = rgb_c;
+			else if (h < 250) c = rgb_b;
+			else if (h < 330) c = rgb_m;
+			else c = rgb_r;
+			for (int z = 0; z < 3; ++z) {
+				clusters.at<cv::Vec3b>(y,x)[z] = c[z];
+			}
 		}
 	}
 
@@ -296,7 +318,7 @@ FindIntersections(const std::vector<Line>& h, const std::vector<Line>& v, std::v
 		cl_d(i, 0) = pts[i].x;
 		cl_d(i, 1) = pts[i].y;
 	}
-	clustering::DBSCAN dbs(0.02, 1, 4);
+	clustering::DBSCAN dbs(0.005, 1, 4);
 	dbs.fit(cl_d);
 
 	clustering::DBSCAN::Labels labels = dbs.get_labels();
@@ -351,7 +373,7 @@ classifyPoints(
 		cv::Vec3b dc[2];
 		int x,y;
 
-		const int r = 10;
+		const int r = 5;
 
 		if (p->x < 0 || p->x >= h.cols || p->y < 0 || p->y >= h.rows) {
 			valid = false;
@@ -365,20 +387,21 @@ classifyPoints(
 
 			// Pattern is reversed this way
 			for (int i = 0; i < 2; ++i) {
+				int j = 1-i;
 				if (dc[i] == red)
-					e[1-i] = 'R';
+					e[j] = 'R';
 				else if (dc[i] == yellow)
-					e[1-i] = 'Y';
+					e[j] = 'Y';
 				else if (dc[i] == green)
-					e[1-i] = 'G';
+					e[j] = 'G';
 				else if (dc[i] == cyan)
-					e[1-i] = 'C';
+					e[j] = 'C';
 				else if (dc[i] == blue)
-					e[1-i] = 'B';
+					e[j] = 'B';
 				else if (dc[i] == magenta)
-					e[1-i] = 'M';
+					e[j] = 'M';
 				else
-					e[1-i] = 'X';
+					e[j] = 'X';
 			}
 
 			const char *m = strstr(pattern, e);
@@ -395,20 +418,21 @@ classifyPoints(
 
 
 			for (int i = 0; i < 2; ++i) {
+				int j = i;
 				if (dc[i] == red)
-					e[i] = 'R';
+					e[j] = 'R';
 				else if (dc[i] == yellow)
-					e[i] = 'Y';
+					e[j] = 'Y';
 				else if (dc[i] == green)
-					e[i] = 'G';
+					e[j] = 'G';
 				else if (dc[i] == cyan)
-					e[i] = 'C';
+					e[j] = 'C';
 				else if (dc[i] == blue)
-					e[i] = 'B';
+					e[j] = 'B';
 				else if (dc[i] == magenta)
-					e[i] = 'M';
+					e[j] = 'M';
 				else 
-					e[i] = 'X';
+					e[j] = 'X';
 			}
 
 			m = strstr(pattern, e);

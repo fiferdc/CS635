@@ -12,9 +12,11 @@ class FeatureMatcher {
 	std::vector<cv::Point2f> getImgFeatures();
 	cv::Mat getPatToImg() { return _patToImg; }
 	cv::Mat getImgToPat() { return _imgToPat; }
+	cv::Mat getMask()	{ return _mask; }
  private:
 	cv::Mat _pat;
 	cv::Mat _img;
+	cv::Mat _mask;
 	cv::Mat _patToImg;
 	cv::Mat _imgToPat;
 	std::vector<cv::KeyPoint> _patFeat;
