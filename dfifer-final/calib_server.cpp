@@ -111,8 +111,6 @@ void test() {
 
 	FeatureMatcher fm(pat, good);
 	cv::imwrite("warp.jpg", fm.match());
-	cv::Mat mask = fm.getMask();
-	cv::imwrite("mask.jpg", mask);
 
 	Rectification r(pat, good);
 	r.rectify();
@@ -168,24 +166,16 @@ void test() {
 		cv::Point2f imgPt = imgPts[i];
 		cv::Point2f patPt = patPts[i];
 		if (imgPt.x != imgPt.x || imgPt.y != imgPt.y) continue;
-		imgPt.y = good.rows - imgPt.y;
-		cv::Point3f world(patPt.x*7*25.4/512.0, (512-patPt.y)*7*25.4/512.0, 0.0);
+		cv::Point3f world(patPt.x*7*25.4/512.0, patPt.y*7*25.4/512.0, 0.0);
 //		std::cout << world << "->" << imgPt << std::endl;
 		camera.addPoint(world, imgPt);
 	}
 
 	cv::Mat corners = m.clone();	
-	for (auto it = points.begin(); it != points.end(); ++it) {
-		circle(corners, *it, 3, cv::Scalar(0, 0, 0), -1, 8);
-		circle(corners, *it, 2, cv::Scalar(255, 255, 255), -1, 8);
-//		std::cout << *it << std::endl;
-	}
 
 	std::cout << "Camera calibration" << std::endl;
 	camera.cvCalibrate();
 	camera.printError("cam_err.txt");
-
-	cv::imwrite("corners.jpg", corners);
 
 	std::vector<cv::Point2f> proj_pts = classifyPoints(ch, cv, points, pattern);
 	cv::Mat img = ih.clone();
@@ -193,13 +183,36 @@ void test() {
 	// For epipolar geometry
 	std::vector<cv::Point3f> worldPts;
 	std::vector<cv::Point2f> discoveredPts;
-	
+	std::vector<int> goodPoints;
+
 	for (int i = 0; i < points.size(); ++i) {
 		if (proj_pts[i] == cv::Point2f(-1,-1)) continue;
 		if (proj_pts[i].x != proj_pts[i].x) continue;
+		goodPoints.push_back(i);
+	}
+
+
+	// Find valid mappings
+	std::vector<unsigned char> mask;
+	{
+		std::vector<cv::Point2f> srcPts;
+		std::vector<cv::Point2f> dstPts;
+		for (int j = 0; j < goodPoints.size(); j++) {
+			int i = goodPoints[j];
+			srcPts.push_back(points[i]);
+			dstPts.push_back(proj_pts[i]);
+		}
+		cv::findHomography(srcPts, dstPts, CV_RANSAC, 3, mask);
+	}
+
+	for (int j = 0; j < goodPoints.size(); j++) {
+		int i = goodPoints[j];
+		if (mask[i] == 0) continue;
+		circle(corners, points[i], 3, cv::Scalar(0, 0, 0), -1, 8);
+		circle(corners, points[i], 2, cv::Scalar(255, 255, 255), -1, 8);
+
 		std::cout << points[i] << " " << proj_pts[i] << std::endl;
-		proj_pts[i].y = 600 - proj_pts[i].y;
-		cv::Point3f world(points[i].x*7*25.4/512.0, (512.0-points[i].y)*7*25.4/512.0, 0.0);
+		cv::Point3f world(points[i].x*7*25.4/512.0, points[i].y*7*25.4/512.0, 0.0);
 		projector.addPoint(world, proj_pts[i]);
 		worldPts.push_back(world);
 		discoveredPts.push_back(proj_pts[i]);
@@ -208,6 +221,8 @@ void test() {
 		//circle(img, p, 2, cv::Scalar(255, 255, 255), -1, 8);
 	}
 	//cv::imwrite("final.jpg", img);
+
+	cv::imwrite("corners.jpg", corners);
 	
 	std::cout << "Projector calibration" << std::endl;
 	projector.cvCalibrate();
