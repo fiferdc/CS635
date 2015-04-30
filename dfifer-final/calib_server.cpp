@@ -166,6 +166,8 @@ void test() {
 		cv::Point2f imgPt = imgPts[i];
 		cv::Point2f patPt = patPts[i];
 		if (imgPt.x != imgPt.x || imgPt.y != imgPt.y) continue;
+//		imgPt.y = good.rows - imgPt.y;
+//		cv::Point3f world(patPt.x*7*25.4/512.0, (512.0-patPt.y)*7*25.4/512.0, 0.0);
 		cv::Point3f world(patPt.x*7*25.4/512.0, patPt.y*7*25.4/512.0, 0.0);
 //		std::cout << world << "->" << imgPt << std::endl;
 		camera.addPoint(world, imgPt);
@@ -212,6 +214,8 @@ void test() {
 		circle(corners, points[i], 2, cv::Scalar(255, 255, 255), -1, 8);
 
 		std::cout << points[i] << " " << proj_pts[i] << std::endl;
+//		proj_pts[i].y = 600 - proj_pts[i].y;
+//		cv::Point3f world(points[i].x*7*25.4/512.0, (512.0-points[i].y)*7*25.4/512.0, 0.0);
 		cv::Point3f world(points[i].x*7*25.4/512.0, points[i].y*7*25.4/512.0, 0.0);
 		projector.addPoint(world, proj_pts[i]);
 		worldPts.push_back(world);
@@ -257,6 +261,7 @@ void test() {
 
 	cv::Mat	centers = sl.getCenters();
 	std::vector<cv::Point3f> reprojection;
+	std::vector<cv::Vec3b> colors;
 	std::cout << "Reprojection" << std::endl;
 	for (int x = 0; x < 7; ++x) {
 		for (int y = 0; y < 7; ++y) {
@@ -269,7 +274,7 @@ void test() {
 
 	// Also draw scene from projector's view
 	cv::Mat invImg = cv::Mat::zeros(600, 600, CV_8UC3);
-	cv::Mat colored = cv::imread("c2.jpg");
+	cv::Mat colored = cv::imread("p0.jpg");
 	for (int x = 0; x < 600; ++x) {
 		for (int y = 0; y < 600; ++y) {
 			cv::Vec3f v = centers.at<cv::Vec3f>(y,x);
@@ -280,6 +285,8 @@ void test() {
 				invImg.at<cv::Vec3b>(y,x) = colored.at<cv::Vec3b>(Y,X);
 				cv::Point3f p = projector.reproject(p0, camera, p1);
 				reprojection.push_back(p);
+				cv::Vec3b color = colored.at<cv::Vec3b>(Y,X);
+				colors.push_back(colored.at<cv::Vec3b>(Y,X));
 //				std::cout << p0 << "<=>" << p1 << std::endl;
 //				std::cout << p << std::endl;
 			}
@@ -559,6 +566,7 @@ void serverFunc(int fd) {
 				write(fd, &c, sizeof(c));
 				//write(fd, &c, sizeof(c));
 				//getImage2(fd);
+				test();
 				break;
 			}
 			default: {}
@@ -569,8 +577,9 @@ void serverFunc(int fd) {
 
 int main(int argc, char** argv)
 {
-	test();
-	return 0;
+	
+	//test();
+	//return 0;
 
 	sem_init(&sem_p, 0, 0);
 	sem_init(&sem_c, 0, 1);

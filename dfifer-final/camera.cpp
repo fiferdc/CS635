@@ -736,10 +736,11 @@ Camera::reproject(cv::Point2f p0, const Camera& cam, cv::Point2f p1) const
 	if (t < 0) t = -t;
 	cv::Point3f f0 = c0 + s * a;
 	f0.z = -f0.z;
+//	f0.x -= 7*25.4;
+	f0.y -= 7*25.4;
+//	f0.x = -f0.x;
+	f0.y = -f0.y;
 	return f0;
-	cv::Point3f f1 = c1 + t * (i1-c1);
-//	return f0;
-	return (f0 + f1) * 0.5;
 }
 
 cv::Point2f
